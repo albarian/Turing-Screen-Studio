@@ -1,0 +1,6 @@
+{
+  "name": "Turing Screen Studio",
+  "description": "Cross-platform control studio, live widget designer, and Web Serial bridge for 3.5-inch USB secondary IPS screens on Windows and macOS.",
+  "requestFramePermissions": ["serial", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
