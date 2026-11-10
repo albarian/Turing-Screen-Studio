@@ -516,13 +516,19 @@ class BridgeHandler(BaseHTTPRequestHandler):
             if ser and ser.is_open:
                 orientation_str = self.headers.get('X-Orientation', 'portrait')
                 protocol = self.headers.get('X-Protocol', 'xuanfang_rev_b')
-                is_portrait = orientation_str == 'portrait'
+                orientation = {
+                    'portrait': 0,
+                    'reverse_portrait': 1,
+                    'landscape': 2,
+                    'reverse_landscape': 3
+                }.get(orientation_str, 0)
+                is_portrait = orientation in (0, 1)
                 w = 320 if is_portrait else 480
                 h = 480 if is_portrait else 320
-                orient_val = 0 if is_portrait else 1
 
                 if protocol == 'xuanfang_rev_b':
                     # Send Rev B Orientation (0xCB) and Bitmap Header (0xCC)
+                    orient_val = 0 if is_portrait else 1
                     ser.write(create_rev_b_command(CMD_B_ORIENTATION, [orient_val]))
                     header = create_rev_b_command(CMD_B_BITMAP, [0, 0, 0, 0, (w - 1) >> 8, (w - 1) & 0xFF, (h - 1) >> 8, (h - 1) & 0xFF])
                     ser.write(header)
@@ -530,7 +536,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
                     # Send Rev A Orientation (121) and Bitmap Header (197)
                     buf = bytearray(16)
                     buf[5] = CMD_A_SET_ORIENTATION
-                    buf[6] = orient_val + 100
+                    buf[6] = orientation + 100
                     buf[7] = (w >> 8) & 0xFF
                     buf[8] = w & 0xFF
                     buf[9] = (h >> 8) & 0xFF
@@ -1636,7 +1642,6 @@ def main():
 if __name__ == '__main__':
     main()
 `;
-
 
 
 

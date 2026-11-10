@@ -7,7 +7,11 @@
  *  - Raw RGB565 Framebuffer Streaming
  */
 
-import { ScreenConfig } from '../types/screen';
+import {
+  isPortraitOrientation,
+  isReversedOrientation,
+  ScreenConfig,
+} from '../types/screen';
 
 // Revision A Opcodes (6-byte header, 16-byte orientation)
 export enum TuringCommandRevA {
@@ -612,7 +616,8 @@ export class TuringSerialDriver {
     width: number,
     height: number,
     endianness: 'little' | 'big' = 'little',
-    colorOrder: 'rgb' | 'bgr' = 'rgb'
+    colorOrder: 'rgb' | 'bgr' = 'rgb',
+    reversePixels = false
   ): Uint8Array {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) throw new Error('No se pudo obtener el contexto 2D');
@@ -624,7 +629,8 @@ export class TuringSerialDriver {
     const raw = new Uint8Array(totalPixels * 2);
 
     let byteIdx = 0;
-    for (let i = 0; i < pixels.length; i += 4) {
+    for (let pixel = 0; pixel < totalPixels; pixel++) {
+      const i = (reversePixels ? totalPixels - 1 - pixel : pixel) * 4;
       const redVal = colorOrder === 'rgb' ? pixels[i] : pixels[i + 2];
       const greenVal = pixels[i + 1];
       const blueVal = colorOrder === 'rgb' ? pixels[i + 2] : pixels[i];
@@ -661,7 +667,7 @@ export class TuringSerialDriver {
     this.isSending = true;
     try {
       this.activeProtocol = config.protocol;
-      const isPortrait = config.orientation === 'portrait';
+      const isPortrait = isPortraitOrientation(config.orientation);
       const width = isPortrait ? 320 : 480;
       const height = isPortrait ? 480 : 320;
       const orientationVal = isPortrait ? ScreenOrientation.PORTRAIT : ScreenOrientation.LANDSCAPE;
@@ -675,7 +681,8 @@ export class TuringSerialDriver {
         width,
         height,
         effectiveEndianness,
-        config.colorOrder
+        config.colorOrder,
+        isReversedOrientation(config.orientation)
       );
 
       // If running via Local HTTP Bridge
@@ -684,7 +691,7 @@ export class TuringSerialDriver {
           method: 'POST',
           headers: {
             'Content-Type': 'application/octet-stream',
-            'X-Orientation': config.orientation,
+            'X-Orientation': isPortrait ? 'portrait' : 'landscape',
             'X-Endianness': effectiveEndianness,
             'X-Protocol': config.protocol || 'xuanfang_rev_b',
           },

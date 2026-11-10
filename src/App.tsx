@@ -23,8 +23,15 @@ import { ToastContainer } from './components/ToastContainer';
 import { WebSerialPanel } from './components/WebSerialPanel';
 import { ScreenRenderer } from './services/screenRenderer';
 import { SystemStatsManager } from './services/systemStats';
-import { ScreenOrientation, TuringSerialDriver } from './services/turingProtocol';
-import { ScreenConfig, ScreenMode } from './types/screen';
+import { TuringSerialDriver } from './services/turingProtocol';
+import {
+  isPortraitOrientation,
+  OrientationMode,
+  ScreenConfig,
+  ScreenMode,
+  toggleOrientationDirection,
+  toggleOrientationShape,
+} from './types/screen';
 import { ToastMessage, ToastType } from './types/toast';
 
 export default function App() {
@@ -114,6 +121,9 @@ export default function App() {
   const lastFrameFinishedRef = useRef<number>(performance.now());
   const frameCountRef = useRef<number>(0);
   const lastFpsTimeRef = useRef<number>(performance.now());
+  const configRef = useRef(config);
+  const previousOrientationRef = useRef(config.orientation);
+  configRef.current = config;
 
   // Initialize driver and stats manager once
   if (!statsManagerRef.current) {
@@ -190,13 +200,7 @@ export default function App() {
           lastSendTimeRef.current = now;
           serialDriver.sendCanvasFrame(canvasRef.current, config).then((ok) => {
             lastFrameFinishedRef.current = performance.now();
-            if (ok) {
-              addToast(
-                'frame',
-                'Frame Synced Successfully',
-                `Stream active (${config.orientation === 'portrait' ? '320×480' : '480×320'})`
-              );
-            } else {
+            if (!ok) {
               addToast('error', 'Frame Transmission Failed', 'Serial port could not complete frame write');
             }
           });
@@ -218,6 +222,34 @@ export default function App() {
     return () => cancelAnimationFrame(animId);
   }, [config, customImage, isSerialStreaming, isConnected]);
 
+  useEffect(() => {
+    const changed = previousOrientationRef.current !== config.orientation;
+    previousOrientationRef.current = config.orientation;
+    if (!changed || !isConnected) return;
+
+    let animId: number;
+    let cancelled = false;
+    const sendUpdatedFrame = () => {
+      if (serialDriver.getIsSending() || !canvasRef.current) {
+        animId = requestAnimationFrame(sendUpdatedFrame);
+        return;
+      }
+
+      serialDriver.sendCanvasFrame(canvasRef.current, configRef.current).then((ok) => {
+        lastFrameFinishedRef.current = performance.now();
+        if (!ok && !cancelled) {
+          addToast('error', 'Orientation Update Failed', 'Serial port could not transmit the updated frame');
+        }
+      });
+    };
+
+    animId = requestAnimationFrame(sendUpdatedFrame);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(animId);
+    };
+  }, [config.orientation, isConnected, serialDriver, addToast]);
+
   // Config updater with offset persistence
   const handleUpdateConfig = (updates: Partial<ScreenConfig>) => {
     setConfig((prev) => {
@@ -231,18 +263,16 @@ export default function App() {
     });
   };
 
-  // Orientation toggle (Portrait = 0, Landscape = 2 in Turing firmware)
-  const toggleOrientation = () => {
-    const next = config.orientation === 'portrait' ? 'landscape' : 'portrait';
+  const updateOrientation = (next: OrientationMode) => {
     handleUpdateConfig({ orientation: next });
-    if (isConnected) {
-      const isP = next === 'portrait';
-      serialDriver.setOrientation(
-        isP ? ScreenOrientation.PORTRAIT : ScreenOrientation.LANDSCAPE,
-        isP ? 320 : 480,
-        isP ? 480 : 320
-      );
-    }
+  };
+
+  const toggleOrientation = () => {
+    updateOrientation(toggleOrientationShape(config.orientation));
+  };
+
+  const rotateOrientation = () => {
+    updateOrientation(toggleOrientationDirection(config.orientation));
   };
 
   // Immediate single-frame send
@@ -258,7 +288,7 @@ export default function App() {
       addToast(
         'frame',
         'Frame Transmitted Successfully',
-        `Rendered frame (${config.orientation === 'portrait' ? '320×480' : '480×320'})`
+        `Rendered frame (${isPortraitOrientation(config.orientation) ? '320×480' : '480×320'})`
       );
     } else {
       addToast('error', 'Transmission Failed', 'Serial port could not complete the frame send');
@@ -362,6 +392,7 @@ export default function App() {
                 canvasRef={canvasRef}
                 config={config}
                 onToggleOrientation={toggleOrientation}
+                onRotateOrientation={rotateOrientation}
                 isSerialStreaming={isSerialStreaming}
                 fps={fps}
               />

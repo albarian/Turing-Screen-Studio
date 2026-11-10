@@ -11,7 +11,7 @@
   Tema: HARDWARE HUD HORIZONTAL (Cyberpunk / AIDA64)
   Métricas en tiempo real:
     - 3 Medidores de Arco: CPU (%) + Temp, GPU (%) + Temp, RAM (%) + GB usados
-    - Barras de almacenamiento: Disco Local C: (%) y Frecuencia / Estado del sistema
+    - Barras de almacenamiento: Disco Local C: (%) y Frecuencia CPU (GHz)
     - Tarjeta de Tráfico de Red en vivo: Descarga (↓) y Subida (↑) en KB/s o MB/s
     - Reloj digital sincronizado y estado del enlace UART a 115.2k
 
@@ -20,7 +20,7 @@
     - Paquetes alineados a 1 línea horizontal de 960 bytes (480 px * 2 bytes)
     - Cero saltos laterales ni desfases en el raster
 
-  Instalación de librerías:
+  Instalación:
     pip install pyserial psutil pillow
 
   Ejecución:
@@ -38,24 +38,13 @@ import serial.tools.list_ports
 import psutil
 from PIL import Image, ImageDraw, ImageFont
 
-# ==============================================================================
-# CONFIGURACIÓN DEL HARDWARE EN MODO HORIZONTAL
-# ==============================================================================
 WIDTH = 480
 HEIGHT = 320
 BAUDRATE = 115200
-
-# Orientación: 2 = Horizontal / Landscape (480x320 en firmware Turing Rev A)
-# (Si tu pantalla queda boca abajo en tu soporte, puedes cambiarlo a 3)
 ORIENTATION = 2
-
-# Brillo: 0 a 100%
 BRIGHTNESS_PERCENT = 90
-
-# Intervalo entre frames en segundos
 UPDATE_INTERVAL = 1.0
 
-# Opcodes Turing Rev A
 CMD_A_RESET = 101
 CMD_A_CLEAR = 102
 CMD_A_SCREEN_ON = 109
@@ -64,13 +53,8 @@ CMD_A_SET_ORIENTATION = 121
 CMD_A_DISPLAY_BITMAP = 197
 CMD_A_HELLO = 69
 
-
-# ==============================================================================
-# DETECCIÓN DEL PUERTO COM / SERIAL
-# ==============================================================================
 def find_turing_port():
     print("[*] Buscando pantalla Turing 3.5\" (VID 0x1A86 / PID 0x5722)...")
-
     if sys.platform.startswith('win'):
         ports = serial.tools.list_ports.comports()
         for p in ports:
@@ -78,19 +62,15 @@ def find_turing_port():
             pid = p.pid
             desc = (p.description or '').lower()
             hwid = (p.hwid or '').lower()
-
             if vid == 0x1A86 and pid == 0x5722:
                 print(f"[✓] Coincidencia exacta VID:PID (0x1A86:0x5722) en {p.device} ({p.description})")
                 return p.device
-
             if '1a86' in hwid or '5722' in hwid or 'ch340' in desc or 'usb-serial' in desc:
                 print(f"[✓] Detectada por hardware ID en {p.device} ({p.description})")
                 return p.device
-
         if ports:
             print(f"[!] Usando primer puerto disponible: {ports[0].device}")
             return ports[0].device
-
     elif sys.platform.startswith('darwin'):
         for pat in ['/dev/cu.wchusbserial*', '/dev/cu.usbserial*', '/dev/cu.SLAB_USBtoUART*']:
             matches = glob.glob(pat)
@@ -103,13 +83,8 @@ def find_turing_port():
             if matches:
                 print(f"[✓] Detectada en Linux: {matches[0]}")
                 return matches[0]
-
     return None
 
-
-# ==============================================================================
-# COMANDOS DE PROTOCOLO TURING REV A
-# ==============================================================================
 def create_rev_a_command(cmd, x=0, y=0, ex=0, ey=0):
     buf = bytearray(6)
     buf[0] = (x >> 2) & 0xFF
@@ -119,7 +94,6 @@ def create_rev_a_command(cmd, x=0, y=0, ex=0, ey=0):
     buf[4] = ey & 0xFF
     buf[5] = cmd & 0xFF
     return bytes(buf)
-
 
 def create_rev_a_orientation_packet(orientation=2, width=480, height=320):
     buf = bytearray(16)
@@ -136,17 +110,14 @@ def create_rev_a_orientation_packet(orientation=2, width=480, height=320):
     buf[10] = height & 0xFF
     return bytes(buf)
 
-
 def set_brightness(ser, level_percent=90):
     clamped = max(0, min(100, int(level_percent)))
     inverted_val = int(255 - (clamped / 100.0) * 255)
     ser.write(create_rev_a_command(CMD_A_SET_BRIGHTNESS, x=inverted_val))
 
-
 def image_to_rgb565_le(img):
     img = img.convert('RGB')
     w, h = img.size
-
     try:
         import numpy as np
         arr = np.array(img, dtype=np.uint16)
@@ -157,7 +128,6 @@ def image_to_rgb565_le(img):
         return rgb.astype('<u2').tobytes()
     except ImportError:
         pass
-
     pixels = img.load()
     raw = bytearray(w * h * 2)
     idx = 0
@@ -170,29 +140,16 @@ def image_to_rgb565_le(img):
             idx += 2
     return bytes(raw)
 
-
 def send_frame(ser, raw_rgb565):
-    """
-    Transmite el frame en modo horizontal.
-    Envía la cabecera DISPLAY_BITMAP (480x320) y luego los píxeles en bloques
-    de 1 línea horizontal de 960 bytes (480 * 2).
-    """
     header = create_rev_a_command(CMD_A_DISPLAY_BITMAP, 0, 0, WIDTH - 1, HEIGHT - 1)
     ser.write(header)
-
-    # Bloque de 1 línea horizontal completa: 480 píxeles * 2 bytes = 960 bytes
     chunk_size = WIDTH * 2
     total = len(raw_rgb565)
     for offset in range(0, total, chunk_size):
         chunk = raw_rgb565[offset:offset + chunk_size]
         ser.write(chunk)
-
     ser.flush()
 
-
-# ==============================================================================
-# CARGA DE FUENTES
-# ==============================================================================
 class FontManager:
     def __init__(self):
         self.font_title = None
@@ -209,7 +166,6 @@ class FontManager:
             ("/System/Library/Fonts/SFCompact.ttf", "/System/Library/Fonts/Helvetica.ttc", "/System/Library/Fonts/Menlo.ttc"),
             ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", None)
         ]
-
         loaded = False
         for bold_path, regular_path, mono_path in candidates:
             if os.path.exists(bold_path) and os.path.exists(regular_path):
@@ -223,7 +179,6 @@ class FontManager:
                     break
                 except Exception:
                     continue
-
         if not loaded:
             self.font_title = ImageFont.load_default()
             self.font_body = ImageFont.load_default()
@@ -231,10 +186,6 @@ class FontManager:
             self.font_small = ImageFont.load_default()
             self.font_gauge = ImageFont.load_default()
 
-
-# ==============================================================================
-# MONITOR DE TELEMETRÍA DEL SISTEMA
-# ==============================================================================
 class SystemMonitor:
     def __init__(self):
         self.last_net = psutil.net_io_counters()
@@ -251,7 +202,6 @@ class SystemMonitor:
         cpu_usage = psutil.cpu_percent(interval=None)
         cpu_freq = psutil.cpu_freq()
         cpu_clock = (cpu_freq.current / 1000.0) if cpu_freq else 3.6
-
         cpu_temp = 40 + int(cpu_usage * 0.35)
         try:
             if hasattr(psutil, "sensors_temperatures"):
@@ -267,7 +217,6 @@ class SystemMonitor:
         gpu_usage = 0
         gpu_temp = 42
         gpu_vram = 0
-
         if self.has_gputil:
             try:
                 gpus = self.gputil.getGPUs()
@@ -288,7 +237,7 @@ class SystemMonitor:
         ram_used_gb = ram.used / (1024 ** 3)
         ram_total_gb = ram.total / (1024 ** 3)
 
-        root_path = 'C:\\\\' if sys.platform.startswith('win') else '/'
+        root_path = 'C:\\' if sys.platform.startswith('win') else '/'
         try:
             disk = psutil.disk_usage(root_path)
             disk_usage = disk.percent
@@ -326,60 +275,42 @@ class SystemMonitor:
             'net_out': net_out,
         }
 
-
-# ==============================================================================
-# RENDERIZADO DEL TEMA HARDWARE HUD EN FORMATO HORIZONTAL (480 x 320)
-# ==============================================================================
 def draw_arc_meter(draw, fonts, cx, cy, radius, value, max_val, color_hex, label, val_str, sub_str):
     thickness = 7
     bbox = [cx - radius, cy - radius, cx + radius, cy + radius]
     start_angle = 145
     end_angle = 395
     sweep = end_angle - start_angle
-
     draw.arc(bbox, start=start_angle, end=end_angle, fill='#1e293b', width=thickness)
-
     pct = max(0.0, min(1.0, value / float(max_val)))
     active_end = start_angle + (sweep * pct)
     if active_end > start_angle:
         draw.arc(bbox, start=start_angle, end=active_end, fill=color_hex, width=thickness)
-
-    # Etiqueta (CPU / GPU / RAM)
     label_bbox = fonts.font_small.getbbox(label)
     lw = label_bbox[2] - label_bbox[0]
     draw.text((cx - lw // 2, cy - 25), label, fill='#94a3b8', font=fonts.font_small)
-
-    # Valor central
     val_bbox = fonts.font_gauge.getbbox(val_str)
     vw = val_bbox[2] - val_bbox[0]
     draw.text((cx - vw // 2, cy - 10), val_str, fill='#ffffff', font=fonts.font_gauge)
-
-    # Subtexto
     sub_bbox = fonts.font_small.getbbox(sub_str)
     sw = sub_bbox[2] - sub_bbox[0]
     draw.text((cx - sw // 2, cy + 14), sub_str, fill=color_hex, font=fonts.font_small)
 
-
 def draw_linear_bar(draw, fonts, x, y, w, h, label, info_str, pct, color_hex):
     draw.text((x, y - 15), label, fill='#94a3b8', font=fonts.font_small)
-
     info_bbox = fonts.font_small.getbbox(info_str)
     iw = info_bbox[2] - info_bbox[0]
     draw.text((x + w - iw, y - 15), info_str, fill='#e2e8f0', font=fonts.font_small)
-
     draw.rounded_rectangle([x, y, x + w, y + h], radius=3, fill='#1e293b')
-
     clamped_pct = max(0.0, min(1.0, pct))
     bar_w = int(w * clamped_pct)
     if bar_w > 4:
         draw.rounded_rectangle([x, y, x + bar_w, y + h], radius=3, fill=color_hex)
 
-
 def render_hardware_hud_landscape(stats, fonts):
     img = Image.new('RGB', (WIDTH, HEIGHT), color='#05070c')
     draw = ImageDraw.Draw(img)
 
-    # 1. Cabecera Cyberpunk
     draw.rectangle([0, 0, WIDTH, 32], fill='#0c121e')
     draw.line([0, 32, WIDTH, 32], fill='#1e293b', width=1)
     draw.text((14, 9), "PC HARDWARE TELEMETRY 480x320", fill='#38bdf8', font=fonts.font_title)
@@ -389,63 +320,48 @@ def render_hardware_hud_landscape(stats, fonts):
     cw = clock_bbox[2] - clock_bbox[0]
     draw.text((WIDTH - cw - 14, 10), now_str, fill='#94a3b8', font=fonts.font_small)
 
-    # 2. Fila Superior: 3 Medidores Circulares (CPU, GPU, RAM)
-    # Centro X: 80 (CPU), 240 (GPU), 400 (RAM)
     r = 44
     cy = 96
-
-    # CPU
     cpu_val_str = f"{int(stats['cpu_usage'])}%"
     cpu_sub_str = f"{stats['cpu_temp']}°C ({stats['cpu_clock']:.1f}G)"
     draw_arc_meter(draw, fonts, cx=80, cy=cy, radius=r, value=stats['cpu_usage'], max_val=100,
                    color_hex='#06b6d4', label='CPU', val_str=cpu_val_str, sub_str=cpu_sub_str)
 
-    # GPU
     gpu_val_str = f"{int(stats['gpu_usage'])}%"
     gpu_sub_str = f"{stats['gpu_temp']}°C (VRAM {int(stats['gpu_vram'])}%)"
     draw_arc_meter(draw, fonts, cx=240, cy=cy, radius=r, value=stats['gpu_usage'], max_val=100,
                    color_hex='#a855f7', label='GPU', val_str=gpu_val_str, sub_str=gpu_sub_str)
 
-    # RAM
     ram_val_str = f"{int(stats['ram_usage'])}%"
     ram_sub_str = f"{stats['ram_used_gb']:.1f}/{stats['ram_total_gb']:.0f} GB"
     draw_arc_meter(draw, fonts, cx=400, cy=cy, radius=r, value=stats['ram_usage'], max_val=100,
                    color_hex='#10b981', label='RAM', val_str=ram_val_str, sub_str=ram_sub_str)
 
-    # Separador horizontal
     draw.line([16, 154, WIDTH - 16, 154], fill='#1e293b', width=1)
 
-    # 3. Fila Media: 2 Barras de almacenamiento / sistema
-    # Barra Izquierda: Disco C:
     disk_str = f"{stats['disk_used_gb']}/{stats['disk_total_gb']} GB ({int(stats['disk_usage'])}%)"
     draw_linear_bar(draw, fonts, x=20, y=176, w=210, h=9,
                     label='DISCO LOCAL (C:)', info_str=disk_str, pct=stats['disk_usage'] / 100.0, color_hex='#f59e0b')
 
-    # Barra Derecha: Carga de Frecuencia / CPU
     cpu_info_str = f"{stats['cpu_clock']:.2f} GHz"
     draw_linear_bar(draw, fonts, x=250, y=176, w=210, h=9,
                     label='FRECUENCIA CPU', info_str=cpu_info_str, pct=min(1.0, stats['cpu_clock'] / 5.0), color_hex='#38bdf8')
 
-    # 4. Fila Inferior: Caja de Tráfico de Red (Red I/O)
     draw.rounded_rectangle([20, 204, WIDTH - 20, 276], radius=6, fill='#0f172a', outline='#1e293b', width=1)
     draw.text((32, 212), "TRÁFICO DE RED EN TIEMPO REAL", fill='#64748b', font=fonts.font_small)
 
-    # Descarga (Izquierda)
     net_in_str = f"↓ {stats['net_in'] / 1024.0:.1f} MB/s" if stats['net_in'] > 1024 else f"↓ {stats['net_in']:.1f} KB/s"
     draw.text((32, 230), net_in_str, fill='#38bdf8', font=fonts.font_bold)
     draw.text((32, 252), "Descarga I/O", fill='#475569', font=fonts.font_small)
 
-    # Subida (Centro)
     net_out_str = f"↑ {stats['net_out'] / 1024.0:.1f} MB/s" if stats['net_out'] > 1024 else f"↑ {stats['net_out']:.1f} KB/s"
     draw.text((180, 230), net_out_str, fill='#ec4899', font=fonts.font_bold)
     draw.text((180, 252), "Subida I/O", fill='#475569', font=fonts.font_small)
 
-    # Estado de Enlace (Derecha)
     draw.ellipse([330, 238, 338, 246], fill='#10b981')
     draw.text((346, 234), "Gigabit Ethernet / Wi-Fi", fill='#e2e8f0', font=fonts.font_small)
     draw.text((346, 252), "psutil live telemetry", fill='#64748b', font=fonts.font_small)
 
-    # 5. Pie de Pantalla
     draw.rectangle([0, 290, WIDTH, HEIGHT], fill='#080c14')
     draw.line([0, 290, WIDTH, 290], fill='#1e293b', width=1)
     draw.text((16, 301), "UART: 115200 bps | Turing Rev A 3.5\" IPS", fill='#10b981', font=fonts.font_small)
@@ -456,10 +372,6 @@ def render_hardware_hud_landscape(stats, fonts):
 
     return img
 
-
-# ==============================================================================
-# FUNCIÓN PRINCIPAL
-# ==============================================================================
 def main():
     parser = argparse.ArgumentParser(description="Turing 3.5 IPS Hardware Monitor Landscape Companion")
     parser.add_argument('--port', type=str, default=None, help="Puerto COM específico (ej. COM3)")
@@ -477,14 +389,12 @@ def main():
     print(f"  Resolución: {WIDTH}x{HEIGHT} | Orientación: {orient_val} | Baudios: {baud_rate}")
     print("=" * 72)
 
-    # 1. Detectar puerto
     port_name = args.port or find_turing_port()
     if not port_name:
         print("\n[!] ERROR: No se encontró ningún puerto COM compatible.")
         print("    Abre el Administrador de Dispositivos y revisa 'Puertos (COM y LPT)'.")
         sys.exit(1)
 
-    # 2. Conectar al puerto serial
     print(f"\n[*] Abriendo {port_name} a {baud_rate} baudios...")
     try:
         ser = serial.Serial(
@@ -508,25 +418,20 @@ def main():
     except Exception:
         pass
 
-    # 3. Secuencia de Inicialización
     print("[*] Enviando handshake de activación y rotación horizontal...")
     try:
-        # Handshake HELLO
         ser.write(bytes([CMD_A_HELLO] * 6))
         time.sleep(0.08)
         if ser.in_waiting:
             ack = ser.read(ser.in_waiting)
             print(f"[✓] Respuesta ACK del hardware: {ack.hex()}")
 
-        # Activar pantalla
         ser.write(create_rev_a_command(CMD_A_SCREEN_ON, 0, 0, 0, 0))
         time.sleep(0.05)
 
-        # Orientación Horizontal (480x320)
         ser.write(create_rev_a_orientation_packet(orientation=orient_val, width=WIDTH, height=HEIGHT))
         time.sleep(0.05)
 
-        # Brillo
         set_brightness(ser, level_percent=BRIGHTNESS_PERCENT)
         time.sleep(0.05)
 
@@ -572,7 +477,6 @@ def main():
             print("[✓] Puerto serial cerrado.")
         except Exception:
             pass
-
 
 if __name__ == '__main__':
     main()

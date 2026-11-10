@@ -5,8 +5,8 @@
 
 import {
   CryptoItem,
+  isPortraitOrientation,
   MediaData,
-  OrientationMode,
   PomodoroState,
   ScreenConfig,
   StatusSignData,
@@ -36,7 +36,7 @@ export class ScreenRenderer {
     statusSign: StatusSignData,
     customImage: HTMLImageElement | null
   ) {
-    const isPortrait = config.orientation === 'portrait';
+    const isPortrait = isPortraitOrientation(config.orientation);
     const width = isPortrait ? 320 : 480;
     const height = isPortrait ? 480 : 320;
 

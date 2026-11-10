@@ -13,7 +13,39 @@ export type ScreenMode =
   | 'custom_image'
   | 'status_sign';
 
-export type OrientationMode = 'portrait' | 'landscape'; // portrait is 320x480, landscape is 480x320
+export type OrientationMode = 'portrait' | 'reverse_portrait' | 'landscape' | 'reverse_landscape';
+
+export const isPortraitOrientation = (orientation: OrientationMode): boolean =>
+  orientation === 'portrait' || orientation === 'reverse_portrait';
+
+export const isReversedOrientation = (orientation: OrientationMode): boolean =>
+  orientation === 'reverse_portrait' || orientation === 'reverse_landscape';
+
+export const toggleOrientationShape = (orientation: OrientationMode): OrientationMode => {
+  switch (orientation) {
+    case 'portrait':
+      return 'landscape';
+    case 'reverse_portrait':
+      return 'reverse_landscape';
+    case 'landscape':
+      return 'portrait';
+    case 'reverse_landscape':
+      return 'reverse_portrait';
+  }
+};
+
+export const toggleOrientationDirection = (orientation: OrientationMode): OrientationMode => {
+  switch (orientation) {
+    case 'portrait':
+      return 'reverse_portrait';
+    case 'reverse_portrait':
+      return 'portrait';
+    case 'landscape':
+      return 'reverse_landscape';
+    case 'reverse_landscape':
+      return 'landscape';
+  }
+};
 
 export interface SystemMetrics {
   cpuUsage: number; // 0-100

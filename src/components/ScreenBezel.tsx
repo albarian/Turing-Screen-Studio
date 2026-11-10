@@ -4,13 +4,18 @@
  */
 
 import React, { useRef } from 'react';
-import { Camera, Download, RotateCw, Sparkles, Tv, ZoomIn, ZoomOut } from 'lucide-react';
-import { OrientationMode, ScreenConfig } from '../types/screen';
+import { Camera, Download, RotateCcw, RotateCw, Sparkles, Tv, ZoomIn, ZoomOut } from 'lucide-react';
+import {
+  isPortraitOrientation,
+  isReversedOrientation,
+  ScreenConfig,
+} from '../types/screen';
 
 interface ScreenBezelProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   config: ScreenConfig;
   onToggleOrientation: () => void;
+  onRotateOrientation: () => void;
   isSerialStreaming: boolean;
   fps: number;
 }
@@ -19,21 +24,39 @@ export const ScreenBezel: React.FC<ScreenBezelProps> = ({
   canvasRef,
   config,
   onToggleOrientation,
+  onRotateOrientation,
   isSerialStreaming,
   fps,
 }) => {
   const [scale, setScale] = React.useState<number>(1);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const isPortrait = config.orientation === 'portrait';
+  const isPortrait = isPortraitOrientation(config.orientation);
+  const isReversed = isReversedOrientation(config.orientation);
   const displayWidth = isPortrait ? 320 : 480;
   const displayHeight = isPortrait ? 480 : 320;
+  const orientationLabel = isPortrait ? 'Portrait' : 'Landscape';
 
   const handleDownloadSnapshot = () => {
     if (!canvasRef.current) return;
     const link = document.createElement('a');
     link.download = `turing_screen_${config.mode}_${config.orientation}.png`;
-    link.href = canvasRef.current.toDataURL('image/png');
+    if (isReversed) {
+      const snapshot = document.createElement('canvas');
+      snapshot.width = displayWidth;
+      snapshot.height = displayHeight;
+      const ctx = snapshot.getContext('2d');
+      if (!ctx) {
+        console.error('Unable to create a canvas for the rotated screenshot');
+        return;
+      }
+      ctx.translate(displayWidth, displayHeight);
+      ctx.rotate(Math.PI);
+      ctx.drawImage(canvasRef.current, 0, 0);
+      link.href = snapshot.toDataURL('image/png');
+    } else {
+      link.href = canvasRef.current.toDataURL('image/png');
+    }
     link.click();
   };
 
@@ -45,9 +68,20 @@ export const ScreenBezel: React.FC<ScreenBezelProps> = ({
           onClick={onToggleOrientation}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-750 rounded-md transition-colors whitespace-nowrap"
           title="Toggle between Portrait (320x480) and Landscape (480x320)"
+          aria-label="Switch between portrait and landscape"
         >
           <RotateCw className="w-3.5 h-3.5 text-cyan-400" />
-          <span>{isPortrait ? 'Portrait (320x480)' : 'Landscape (480x320)'}</span>
+          <span>{orientationLabel} ({displayWidth}x{displayHeight})</span>
+        </button>
+
+        <button
+          onClick={onRotateOrientation}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-750 rounded-md transition-colors whitespace-nowrap"
+          title="Rotate the display 180°"
+          aria-label="Rotate display 180 degrees"
+        >
+          <RotateCcw className="w-3.5 h-3.5 text-violet-400" />
+          <span>{isReversed ? 'Reset rotation' : 'Rotate 180°'}</span>
         </button>
 
         <div className="h-4 w-px bg-slate-800" />
@@ -134,6 +168,7 @@ export const ScreenBezel: React.FC<ScreenBezelProps> = ({
               style={{
                 width: `${displayWidth}px`,
                 height: `${displayHeight}px`,
+                transform: isReversed ? 'rotate(180deg)' : undefined,
                 filter: `brightness(${Math.max(20, config.brightness)}%) ${
                   config.invertColors ? 'invert(1)' : ''
                 }`,

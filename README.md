@@ -120,6 +120,7 @@ Getting this device to display frames smoothly without third-party proprietary b
 5. **Instant Test Patterns:** SMPTE Color Bars, 20px Calibration Grid, Pure White, Pure Black, Red, Green, Blue.
 6. **Live Hardware Monitor HUD:** Browser canvas HUD mirroring CPU, memory, clock, disk, and network metrics.
 7. **9 Interactive Themes:** Cyberpunk HUD, Minimal Swiss Desk, Retro Pixel, Weather Station, Media Player, Crypto Ticker, Pomodoro Timer, Custom Image Frame, and Status Sign.
+8. **Four Screen Orientations:** Switch between portrait and landscape, then use **Rotate 180°** or **Reset rotation** for the opposite direction. Rotation is applied to the transmitted pixels so it does not depend on firmware support for reverse orientation. A connected screen receives the updated frame after any current transmission finishes.
 
 ---
 
